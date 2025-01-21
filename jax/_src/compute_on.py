@@ -45,7 +45,7 @@ def current_compute_type() -> str | None:
   return compute_on_context.stack[-1] if compute_on_context.stack else None
 
 def _check_valid(c_type: str):
-  if c_type not in {'device_host', 'device', 'tpu_sparsecore'}:
+  if c_type not in {'device_host', 'device', 'tpu_sparsecore'} and not c_type.startswith("stream:"):
     raise ValueError(
         'Invalid compute type received. Current supported values '
         f'are `device_host`, `device` and `tpu_sparsecore`. Got {c_type}')

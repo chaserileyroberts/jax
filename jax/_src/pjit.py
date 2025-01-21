@@ -1964,6 +1964,12 @@ def _pjit_lowering(ctx, *args, name, jaxpr, in_shardings,
   call = func_dialect.CallOp(flat_output_types,
                              ir.FlatSymbolRefAttr.get(func.name.value),
                              mlir.flatten_ir_values(args))
+  if ctx.jaxpr_eqn_ctx.compute_type is not None and ctx.jaxpr_eqn_ctx.compute_type.startswith("stream:"):
+    _, stream, schedule = ctx.jaxpr_eqn_ctx.compute_type.split(":")
+    dict_attr = {"_xla_stream_annotation": ir.StringAttr.get(stream)}
+    if schedule:
+      dict_attr["_scheduling_group_id"] = ir.StringAttr.get(schedule)
+    call.operation.attributes["mhlo.frontend_attributes"] = ir.DictAttr.get(dict_attr)
   mlir.wrap_compute_type_in_place(ctx, call)
   out_nodes = mlir.unflatten_ir_values_like_types(call.results, output_types)
   tokens, out_nodes = split_list(out_nodes, [len(effects)])
