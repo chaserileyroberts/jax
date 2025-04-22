@@ -44,6 +44,7 @@ from jax._src.mesh import AxisType
 from jax._src.interpreters import partial_eval as pe
 from jax._src import linear_util as lu
 from jax._src import tree_util
+from jax._src.xla_metadata import set_xla_metadata
 from jax.custom_derivatives import SymbolicZero
 import jax.numpy as jnp
 
@@ -3364,6 +3365,30 @@ class CustomPartitionerTest(jtu.JaxTestCase):
 
     self.assertAllClose(f(jnp.arange(8.)), jnp.array([1.,  5.,  9., 13.]))
 
+class CollectivesGroupTest(jtu.JaxTestCase):
+  @jtu.run_on_devices('gpu')
+  def test_bidirectional_collectives_group(self):
+    mesh = jtu.create_mesh((4,), 'x')
+    
+    @jax.jit
+    def bidirectional_ring(a):
+      b = jax.lax.pshuffle(a, 'x', [3, 0, 1, 2])
+      c = jax.lax.pshuffle(a, 'x', [1, 2, 3, 0])
+      return b, c
+    
+    def f(a):
+      with set_xla_metadata(_collectives_group="", inlineable="false"):
+        return bidirectional_ring(a)
+
+    sharded_f = jax.jit(shard_map(f, mesh, in_specs=P('x'), out_specs=(P('x'), P('x'))))
+    compiled_f = sharded_f.lower(jnp.arange(4)).compile()
+    compiled_text = compiled_f.as_text()
+    self.assertIn("async-start", compiled_text)
+    self.assertIn("_collectives_group", compiled_text)
+
+    b, c = compiled_f(jnp.arange(4))
+    self.assertAllClose(b, [3, 0, 1, 2])
+    self.assertAllClose(c, [1, 2, 3, 0])
 
 @jtu.with_config(jax_use_shardy_partitioner=True)
 # TODO(phawkins): enable this test unconditionally once shardy is the default.
